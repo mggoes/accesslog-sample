@@ -1,0 +1,21 @@
+server:
+  undertow:
+    accesslog:
+      enabled: true
+      dir: /Users/matheus.goes/Downloads/logs
+      prefix: access_log
+      suffix: .log
+
+accesslog:
+  purge:
+    enabled: true
+    execute-on-startup: true
+    execution-interval: 10
+    execution-interval-unit: SECONDS
+    max-history: 1
+    max-history-unit: MINUTES
+
+logging:
+  level:
+    br.com.sample.AccesslogSampleApplication: trace
+
