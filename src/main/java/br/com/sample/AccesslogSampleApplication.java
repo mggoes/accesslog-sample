@@ -2,24 +2,25 @@ package br.com.sample;
 
 import static java.lang.Boolean.TRUE;
 import static java.lang.Runtime.getRuntime;
-import static java.time.LocalTime.MIDNIGHT;
-import static java.time.LocalTime.now;
-import static java.time.temporal.ChronoUnit.DAYS;
-import static java.time.temporal.ChronoUnit.HOURS;
-import static java.time.temporal.ChronoUnit.MILLIS;
-import static java.time.temporal.ChronoUnit.MINUTES;
-import static java.time.temporal.ChronoUnit.SECONDS;
-import static java.util.concurrent.TimeUnit.valueOf;
+import static java.util.Calendar.DAY_OF_MONTH;
+import static java.util.Calendar.HOUR_OF_DAY;
+import static java.util.Calendar.MILLISECOND;
+import static java.util.Calendar.MINUTE;
+import static java.util.Calendar.SECOND;
+import static java.util.concurrent.TimeUnit.DAYS;
+import static java.util.concurrent.TimeUnit.HOURS;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.MINUTES;
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.springframework.util.Assert.isTrue;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.attribute.FileTime;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
+import java.io.File;
+import java.io.FilenameFilter;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.EnumSet;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.SpringApplication;
@@ -66,7 +67,7 @@ public class AccesslogSampleApplication {
 		/**
 		 * The constant ALLOWED_UNITS.
 		 */
-		private static final EnumSet<ChronoUnit> ALLOWED_UNITS = EnumSet.of(SECONDS, MINUTES, HOURS, DAYS);
+		private static final EnumSet<TimeUnit> ALLOWED_UNITS = EnumSet.of(SECONDS, MINUTES, HOURS, DAYS);
 
 		/**
 		 * The Enabled.
@@ -87,11 +88,11 @@ public class AccesslogSampleApplication {
 		/**
 		 * The Execution interval unit.
 		 */
-		private ChronoUnit executionIntervalUnit = HOURS;
+		private TimeUnit executionIntervalUnit = HOURS;
 		/**
 		 * The Max history unit.
 		 */
-		private ChronoUnit maxHistoryUnit = DAYS;
+		private TimeUnit maxHistoryUnit = DAYS;
 
 		/**
 		 * After properties set.
@@ -163,15 +164,24 @@ public class AccesslogSampleApplication {
 			long initialDelay = 0;
 
 			if (!this.purgeProperties.isExecuteOnStartup()) {
-				initialDelay = MILLIS.between(now(), MIDNIGHT);
+				final Calendar calendar = Calendar.getInstance();
+				calendar.set(HOUR_OF_DAY, 0);
+				calendar.set(MINUTE, 0);
+				calendar.set(SECOND, 0);
+				calendar.set(MILLISECOND, 0);
+				calendar.add(DAY_OF_MONTH, 1);
+
+				final long midnight = calendar.getTimeInMillis();
+				final long now = new Date().getTime();
+
+				initialDelay = midnight - now;
 			}
 
 			final PurgeTask purgeTask = new PurgeTask(this.purgeProperties, this.accesslog);
 			final long executionInterval = this.purgeProperties.getExecutionInterval();
-			final String executionIntervalUnit = this.purgeProperties.getExecutionIntervalUnit().name();
+			final TimeUnit executionIntervalUnit = this.purgeProperties.getExecutionIntervalUnit();
 
-			Executors.newScheduledThreadPool(getRuntime().availableProcessors())
-					.scheduleWithFixedDelay(purgeTask, initialDelay, executionInterval, valueOf(executionIntervalUnit));
+			Executors.newScheduledThreadPool(getRuntime().availableProcessors()).scheduleWithFixedDelay(purgeTask, initialDelay, executionInterval, executionIntervalUnit);
 		}
 
 	}
@@ -191,9 +201,9 @@ public class AccesslogSampleApplication {
 		 */
 		private final PurgeProperties purgeProperties;
 		/**
-		 * The Path.
+		 * The Access log dir.
 		 */
-		private final Path path;
+		private final File accessLogDir;
 		/**
 		 * The Current log file name.
 		 */
@@ -211,7 +221,7 @@ public class AccesslogSampleApplication {
 		 */
 		public PurgeTask(final PurgeProperties purgeProperties, final Accesslog accesslog) {
 			this.purgeProperties = purgeProperties;
-			this.path = accesslog.getDir().toPath();
+			this.accessLogDir = accesslog.getDir();
 			this.currentLogFileName = accesslog.getPrefix() + accesslog.getSuffix();
 			this.pattern = this.buildPattern(accesslog);
 		}
@@ -222,58 +232,47 @@ public class AccesslogSampleApplication {
 		@Override
 		public void run() {
 			log.trace("Purging access log files...");
-			try {
-				Files.list(this.path).filter(this::isPurgeable).forEach(this::purge);
-			} catch (final IOException e) {
-				log.error(e.getMessage(), e);
+			final File[] files = this.accessLogDir.listFiles(new FilenameFilter() {
+				@Override
+				public boolean accept(final File dir, final String name) {
+					return isPurgeable(dir, name);
+				}
+			});
+
+			for (final File file : files) {
+				this.purge(file);
 			}
 			log.trace("Purging finished!");
 		}
 
-		/**
-		 * Is purgeable boolean.
-		 *
-		 * @param accessLogPath the access log path
-		 * @return the boolean
-		 */
-		private boolean isPurgeable(final Path accessLogPath) {
+		private boolean isPurgeable(final File file, final String fileName) {
 			boolean purgeable = false;
-			try {
-				final String fileName = accessLogPath.getFileName().toString();
-				log.trace("File name: {}", fileName);
+			log.trace("File name: {}", fileName);
 
-				if (!this.currentLogFileName.equals(fileName) && fileName.matches(this.pattern)) {
-					final FileTime lastModifiedTime = Files.getLastModifiedTime(accessLogPath);
-					final Instant lastModifiedInstant = Instant.ofEpochMilli(lastModifiedTime.toMillis());
-					log.trace("Last modified instant: {}", lastModifiedInstant);
+			if (!this.currentLogFileName.equals(fileName) && fileName.matches(this.pattern)) {
+				final TimeUnit maxHistoryUnit = this.purgeProperties.getMaxHistoryUnit();
 
-					final Instant now = Instant.now();
-					log.trace("Now: {}", now);
+				final long lastModified = maxHistoryUnit.convert(file.lastModified(), MILLISECONDS);
+				log.trace("Last modified: {}", lastModified);
 
-					final ChronoUnit maxHistoryUnit = this.purgeProperties.getMaxHistoryUnit();
-					final long between = maxHistoryUnit.between(lastModifiedInstant, now);
-					log.trace("Between: {} {}", between, maxHistoryUnit);
+				final long now = maxHistoryUnit.convert(new Date().getTime(), MILLISECONDS);
+				log.trace("Now: {}", now);
 
-					purgeable = between > this.purgeProperties.getMaxHistory();
-				}
+				final long between = now - lastModified;
+				log.trace("Between: {} {}", between, maxHistoryUnit);
 
-				log.trace("Purgeable: {}", purgeable);
-			} catch (final IOException e) {
-				log.error(e.getMessage(), e);
+				purgeable = between > this.purgeProperties.getMaxHistory();
 			}
+
+			log.trace("Purgeable: {}", purgeable);
 			return purgeable;
 		}
 
-		/**
-		 * Purge.
-		 *
-		 * @param accessLogPath the access log path
-		 */
-		private void purge(final Path accessLogPath) {
+		private void purge(final File accessLogFile) {
 			try {
-				final boolean deleted = Files.deleteIfExists(accessLogPath);
+				final boolean deleted = accessLogFile.delete();
 				log.trace("Deleted: {}", deleted);
-			} catch (final IOException e) {
+			} catch (final SecurityException e) {
 				log.error(e.getMessage(), e);
 			}
 		}
