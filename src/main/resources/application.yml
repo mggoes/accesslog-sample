@@ -2,7 +2,7 @@ server:
   undertow:
     accesslog:
       enabled: true
-      dir: /Users/matheus.goes/Downloads/logs
+      dir: /Users/Matheus/Downloads/logs
       prefix: access_log
       suffix: .log
 
@@ -17,5 +17,5 @@ accesslog:
 
 logging:
   level:
-    br.com.sample.AccesslogSampleApplication: trace
+    br.com.sample.AccessLogSampleApplication: trace
 

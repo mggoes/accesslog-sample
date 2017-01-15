@@ -35,7 +35,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
-import br.com.sample.AccesslogSampleApplication.PurgeProperties;
+import br.com.sample.AccessLogSampleApplication.PurgeProperties;
 import io.undertow.servlet.api.DeploymentInfo;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -46,7 +46,7 @@ import lombok.extern.slf4j.Slf4j;
  */
 @SpringBootApplication
 @EnableConfigurationProperties(PurgeProperties.class)
-public class AccesslogSampleApplication {
+public class AccessLogSampleApplication {
 
 	/**
 	 * Main.
@@ -54,7 +54,7 @@ public class AccesslogSampleApplication {
 	 * @param args the args
 	 */
 	public static void main(final String... args) {
-		SpringApplication.run(AccesslogSampleApplication.class, args);
+		SpringApplication.run(AccessLogSampleApplication.class, args);
 	}
 
 	/**
@@ -113,7 +113,7 @@ public class AccesslogSampleApplication {
 	 */
 	@Configuration
 	@AllArgsConstructor
-	public class PurgableAccesslogConfig implements EmbeddedServletContainerCustomizer {
+	public class PurgeableAccessLogConfig implements EmbeddedServletContainerCustomizer {
 
 		/**
 		 * The Server properties.
@@ -164,14 +164,14 @@ public class AccesslogSampleApplication {
 			long initialDelay = 0;
 
 			if (!this.purgeProperties.isExecuteOnStartup()) {
-				final Calendar calendar = Calendar.getInstance();
-				calendar.set(HOUR_OF_DAY, 0);
-				calendar.set(MINUTE, 0);
-				calendar.set(SECOND, 0);
-				calendar.set(MILLISECOND, 0);
-				calendar.add(DAY_OF_MONTH, 1);
+				final Calendar baseDate = Calendar.getInstance();
+				baseDate.set(HOUR_OF_DAY, 0);
+				baseDate.set(MINUTE, 0);
+				baseDate.set(SECOND, 0);
+				baseDate.set(MILLISECOND, 0);
+				baseDate.add(DAY_OF_MONTH, 1);
 
-				final long midnight = calendar.getTimeInMillis();
+				final long midnight = baseDate.getTimeInMillis();
 				final long now = new Date().getTime();
 
 				initialDelay = midnight - now;
@@ -238,9 +238,10 @@ public class AccesslogSampleApplication {
 					return isPurgeable(dir, name);
 				}
 			});
-
-			for (final File file : files) {
-				this.purge(file);
+			if (files != null) {
+				for (final File file : files) {
+					this.purge(file);
+				}
 			}
 			log.trace("Purging finished!");
 		}
