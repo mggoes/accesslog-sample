@@ -23,7 +23,7 @@ import br.com.sample.AccessLogSampleApplication.PurgeableAccessLogDeploymentInfo
 @RunWith(MockitoJUnitRunner.class)
 public class PurgeableAccessLogDeploymentInfoCustomizerTest {
 
-	private static final String TEMP_DIR = "/tmp/access_log_test";
+	private static final String TEMP_DIR = "./target/access_log_test";
 	private static final String FILE_NAME_PATTERN = "%s/%s%s-0%d.%s";
 	private static final int FILES_AMOUNT = 3;
 	private PurgeableAccessLogDeploymentInfoCustomizer customizerUnderTest;
